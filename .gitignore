@@ -12,3 +12,7 @@ Thumbs.db
 # Editor
 .vscode/
 *.swp
+
+# Claude Code session transcripts (only explicitly checked-in sessions are tracked)
+.claude-sessions/*
+!.claude-sessions/c25dac1b-7254-4e0c-a736-776ca57fc62a.jsonl
