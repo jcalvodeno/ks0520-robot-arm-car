@@ -2,7 +2,7 @@
 
 A personal, organized rebuild of the official Keyestudio documentation for the **KS0520 4DOF Mechanical Robot Arm Car** kit — a 3-in-1 Arduino educational kit that assembles into a smart car, a 4-DOF robot arm, or both combined. The stock docs bundle everything into one giant, inconsistently-formatted 4000-line file; this repo splits it into a clean per-project guide with the matching sketches ready to open and upload.
 
-Original vendor sources: [Keyestudio Wiki](https://wiki.keyestudio.com/KS0520_KEYESTUDIO_4DOF_Mechanical_Robot_Arm_Car_Learning_Kit) · [docs.keyestudio.com](https://docs.keyestudio.com/projects/KS0520/en/latest/KS0520.html) · [GitHub source](https://github.com/keyestudio/KS0520-4DOF-Mechanical-Robot-Arm-Car) · [App/code/library download](https://fs.keyestudio.com/KS0520)
+Original vendor sources: [Keyestudio Wiki](https://wiki.keyestudio.com/KS0520_KEYESTUDIO_4DOF_Mechanical_Robot_Arm_Car_Learning_Kit) · [docs.keyestudio.com](https://docs.keyestudio.com/projects/KS0520/en/latest/docs/KS0520.html) · [GitHub source](https://github.com/keyestudio/KS0520-4DOF-Mechanical-Robot-Arm-Car) · [App/code/library download](https://fs.keyestudio.com/KS0520)
 
 ## Overview
 
@@ -19,7 +19,7 @@ Control paths: a wired-in **HM-10 Bluetooth 4.0** module paired with the *"keyes
 ## Repo layout
 
 ```
-projects/<NN>_<name>/lesson_X.Y_<name>/*.ino   20 numbered projects, each folder = one sketch to open in Arduino IDE
+projects/<NN>_<name>/lesson_X.Y_<name>/*.ino   20 numbered projects (plus a Project 0 blank/stop sketch), each folder = one sketch to open in Arduino IDE
 libraries/PS2X_lib/                             PS2 controller library (not bundled with Arduino IDE — must be installed)
 libraries/Servo/                                Standard Arduino Servo library (Arduino IDE already ships this; included for reference/offline use)
 ```
@@ -31,6 +31,90 @@ libraries/Servo/                                Standard Arduino Servo library (
 3. In the IDE: **Tools → Board → Arduino Uno**, **Tools → Port → (your COM port)**.
 4. For any project below: open its `.ino`, upload, then follow that project's "Run it" steps.
 5. **Before uploading anything**, unplug the Bluetooth module from the shield — it shares the same TX/RX lines used to program the board and will block uploads if left connected.
+
+## Building from VS Code instead of the Arduino IDE
+
+You don't need the Arduino IDE app itself — its compiler/uploader toolchain (`arduino-cli`) can be driven from VS Code directly.
+
+### One-time setup
+
+1. **Install the CP2102 driver.** Silicon Labs' download ([silabs.com/software-and-tools/usb-to-uart-bridge-vcp-drivers](https://www.silabs.com/software-and-tools/usb-to-uart-bridge-vcp-drivers)) is driver files only, no `setup.exe`. Install it either by:
+   - Right-clicking `silabser.inf` inside the extracted folder → **Install**, or
+   - From an elevated PowerShell: `pnputil /add-driver "<path>\silabser.inf" /install`
+2. **Install `arduino-cli`**: `winget install --id ArduinoSA.CLI -e`
+3. **Install the VS Code extensions**:
+   ```
+   code --install-extension vscode-arduino.vscode-arduino-community
+   code --install-extension ms-vscode.vscode-serial-monitor
+   ```
+   (The original Microsoft `vscode-arduino` extension was removed from the Marketplace in 2024 — `vscode-arduino-community` is the maintained fork.)
+
+   By default the extension looks for the classic Arduino IDE's `arduino_debug.exe`, which isn't installed here — point it at `arduino-cli` instead via `.vscode/settings.json`:
+   ```json
+   {
+       "arduino.useArduinoCli": true,
+       "arduino.path": "C:\\Program Files\\Arduino CLI",
+       "arduino.commandPath": "arduino-cli.exe"
+   }
+   ```
+   (Without this, Verify/Upload fail with `spawn arduino_debug.exe ENOENT`.) Reload the VS Code window after changing it.
+4. **Install the AVR board core** (targets the ATmega328P this board uses):
+   ```
+   arduino-cli config init
+   arduino-cli core update-index
+   arduino-cli core install arduino:avr
+   ```
+5. **Install `libraries/PS2X_lib` and `libraries/Servo`** into `arduino-cli`'s sketchbook so any project can `#include` them. Unlike the classic Arduino IDE, `arduino-cli`'s AVR core does **not** bundle `Servo` — without this step, any sketch using it (Projects 3, 14, 15+) fails with `Servo.h: No such file or directory`.
+   ```
+   mkdir "$env:USERPROFILE\Documents\Arduino\libraries"
+   Copy-Item -Recurse libraries\PS2X_lib "$env:USERPROFILE\Documents\Arduino\libraries\"
+   Copy-Item -Recurse libraries\Servo "$env:USERPROFILE\Documents\Arduino\libraries\"
+   ```
+
+### Per-project workflow
+
+Each project folder gets its own `.vscode/arduino.json` pointing at the sketch to build:
+```json
+{
+    "sketch": "projects/01_led_light/lesson_1.1_Blink/lesson_1.1_Blink.ino",
+    "board": "arduino:avr:uno",
+    "port": "COM3",
+    "output": "build"
+}
+```
+- `board` is always `arduino:avr:uno` for this kit's V4.0 board (Uno-compatible).
+- To find your `port`: plug the board in, then in PowerShell run
+  ```
+  Get-CimInstance -ClassName Win32_PnPEntity | Where-Object { $_.Name -match 'COM\d+' } | Select-Object Name, Status
+  ```
+  It should list `Silicon Labs CP210x USB to UART Bridge (COMx)` — that's your port.
+
+Then either:
+- **Via the extension**: open the sketch's `.ino`, click the upload icon (checkmark→arrow, top-right) or press `Ctrl+Alt+U`. It reads `board`/`port`/`sketch` straight from `arduino.json` above.
+- **Via `arduino-cli` directly** (what the extension runs under the hood — useful for seeing exact pass/fail output instead of a GUI spinner):
+  ```
+  arduino-cli compile --fqbn arduino:avr:uno "projects\01_led_light\lesson_1.1_Blink"
+  arduino-cli upload -p COM3 --fqbn arduino:avr:uno "projects\01_led_light\lesson_1.1_Blink"
+  ```
+  A successful upload ends with `Writing | ##...100% | N bytes of flash written`.
+
+### Switching between projects
+
+Three config files live in `.vscode/` — only one of them changes per project:
+
+| File | Changes per project? | What to do |
+|---|---|---|
+| `arduino.json` | **Yes** | Edit `"sketch"` to the new project's `.ino` path. `board` and `port` stay the same unless you change hardware. |
+| `c_cpp_properties.json` | No manual edit | Regenerates itself the first time you run **Verify** on the new sketch — the extension re-derives include paths/defines from the actual build. IntelliSense may show stale red squiggles for a few seconds until that finishes. |
+| `settings.json` | No | One-time global setting (`arduino.path` etc.) — set once, ignore afterwards. |
+
+So the only manual step when moving to the next lesson is updating `arduino.json`'s `"sketch"` field, then running Verify once to let IntelliSense catch up.
+
+**Faster way — the "Switch Arduino Project" task**: `Ctrl+Shift+P` → **Tasks: Run Task** → **Switch Arduino Project** → pick a project from the list. This runs `.vscode/switch-project.ps1`, which rewrites `arduino.json`'s `"sketch"` field for you (preserving `board`/`port`) — no manual JSON editing needed. Then Verify/Upload as usual.
+
+### Project 0 — Blank (stopping the board)
+
+There's no software "pause" for a flashed sketch — it runs forever until you flash something else or cut power. `projects/00_blank/lesson_0_blank/lesson_0_blank.ino` is an empty `setup()`/`loop()` sketch for exactly this: pick **"0 — Blank (stop the board)"** from the project switcher above, Upload, and whatever the board was doing (blinking, spinning motors, sweeping servos) stops — while staying connected and ready for the next project.
 
 ## Global pinout reference
 
