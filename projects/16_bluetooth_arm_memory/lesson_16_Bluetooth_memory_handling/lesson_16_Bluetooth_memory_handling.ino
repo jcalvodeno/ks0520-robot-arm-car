@@ -30,7 +30,7 @@ void T_right(){  //turn right
   pos1-=1;
   myservo1.write(pos1);
   delay(5);
-  if(pos1<=0){
+  if(pos1<=0){  //unclamped per user request - wants full counterclockwise travel toward 8-9 o'clock
     pos1=0;
   }
 }
@@ -39,8 +39,8 @@ void ZB(){  //claw closes
   pos4-=2;
   myservo4.write(pos4);
   delay(5);
-  if(pos4<=95){
-    pos4=95;
+  if(pos4<=18){  //calibrated floor - measured fully-closed angle on this rebuild
+    pos4=18;
   }
 }
 
@@ -57,8 +57,8 @@ void LF(){  //smaller arm lifts up
   pos2+=1;
   myservo2.write(pos2);
   delay(5);
-  if(pos2>=100){
-    pos2=100;
+  if(pos2>=120){  //raised per user request - confirmed reachable
+    pos2=120;
   }
 }
 
@@ -66,7 +66,7 @@ void LB(){  //smaller arm lifts down
   pos2-=1;
   myservo2.write(pos2);
   delay(5);
-  if(pos2<=1){
+  if(pos2<=0){  //unclamped per user request
     pos2=0;
   }
 }
@@ -84,8 +84,8 @@ void RB(){  // bigger arm swings back
   pos3-=1;
   myservo3.write(pos3);
   delay(5);
-  if(pos3<=80){
-    pos3=80;
+  if(pos3<=75){  //calibrated floor - conservative, this joint's real safe floor depends on servo2's position (not modeled here)
+    pos3=75;
   }
 }
 
@@ -105,41 +105,17 @@ void setup(){
   
 }
 
+char activeCommand = 0; // which movement command is currently "held" - 0 means none
+
 void loop(){
   if(Serial.available()>0){  //determine if Bluetooth receives signals
-    switch(Serial.read()){
-      case 'Q':while('Q'){
-        LF(); //smaller arm lifts up
-        if(Serial.read()=='s')break;
-      }break;
-      case 'E':while('E'){
-        LB(); //smaller arm lifts down
-        if(Serial.read()=='s')break;
-      }break;
-      case 'l':while('l'){
-        T_left(); //arm turns left
-        if(Serial.read()=='s')break;
-      }break;
-      case 'r':while('r'){
-        T_right();  //arm turns right
-        if(Serial.read()=='s')break;
-      }break;
-      case 'f':while('f'){
-        RF(); //bigger arm swings forward
-        if(Serial.read()=='s')break;
-      }break;
-      case 'b':while('b'){
-        RB(); //arm swings back
-        if(Serial.read()=='s')break;
-      }break;
-      case 'V':while('V'){
-        ZK(); //claw opens
-        if(Serial.read()=='s')break;
-      }break;
-      case 'P':while('P'){
-        ZB(); //claw closes
-        if(Serial.read()=='s')break;
-      }break; 
+    char cmd = Serial.read();
+    if(cmd=='s'){
+      activeCommand = 0; //explicit stop signal from the app
+    } else if(cmd=='Q'||cmd=='E'||cmd=='l'||cmd=='r'||cmd=='f'||cmd=='b'||cmd=='V'||cmd=='P'){
+      activeCommand = cmd; //start/replace the held movement command
+    }
+    switch(cmd){
       case 't': {  //receive‘t’，remember
         M1[i]=myservo1.read();  //save the current angle of each servo to array
         delay(100); //delay time to save angle value
@@ -233,10 +209,18 @@ void loop(){
             }
           }
       }
-        if(Serial.read()=='s')break;
       }break;
-      
-    } 
+    }
+  }
+  switch(activeCommand){
+    case 'Q': LF(); break; //smaller arm lifts up
+    case 'E': LB(); break; //smaller arm lifts down
+    case 'l': T_left(); break; //arm turns left
+    case 'r': T_right(); break; //arm turns right
+    case 'f': RF(); break; //bigger arm swings forward
+    case 'b': RB(); break; //arm swings back
+    case 'V': ZK(); break; //claw opens
+    case 'P': ZB(); break; //claw closes
   }
   delay(5);
 }

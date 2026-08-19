@@ -59,7 +59,7 @@ void loop() {
   left_ser();  //call left servo function
   right_ser(); //call right servo function 
   zhuazi();  //call claw function
-  delay(10);
+  delay(20);  //slowed from 10ms for finer, safer stick control, consistent with lesson 17
 }
 
 void down_ser() { //servo on base
@@ -91,9 +91,9 @@ void left_ser() { //left servo
     pos2 = pos2 + 1;
     myservo2.write(pos2);  //arm swings forward
 //    delay(2);
-    if (pos2 > 100) //limit the angle of forward swinging
+    if (pos2 > 120) //limit the angle of forward swinging - calibrated for this rebuild
     {
-      pos2 = 100;
+      pos2 = 120;
     }
   }
   if (ps2x.Analog(PSS_LY) > 200) //put left joystick backward
@@ -124,9 +124,9 @@ void right_ser() { //right servo
     pos3 = pos3 - 1;
     myservo3.write(pos3);  //大arm swings back
 //    delay(2);
-    if (pos3 < 80) //limit the angle of back swinging
+    if (pos3 < 75) //limit the angle of back swinging - calibrated for this rebuild
     {
-      pos3 = 80;
+      pos3 = 75;
     }
   }
 }
@@ -135,8 +135,7 @@ void zhuazi() { //servo of claw
   if (ps2x.Analog(PSS_RX) > 200) //put right joystick rightward
   {
     myservo4.write(pos4);  //servo 4 moves, claw gradually opens
-    pos4 += 3;
-    delay(2);
+    pos4 += 1;  //reduced from 3 for finer control, matches other joints' step size
     if (pos4 > 180) //limit angles
     {
       pos4 = 180;
@@ -145,11 +144,10 @@ void zhuazi() { //servo of claw
   if (ps2x.Analog(PSS_RX) < 50) ////put right joystick leftward
   {
     myservo4.write(pos4); //servo 4 executes pose, claw gradually closes
-    pos4 -= 3;
-    delay(2);
-    if (pos4 < 95) //limit to open the maximum angle
+    pos4 -= 1;  //reduced from 3 for finer control, matches other joints' step size
+    if (pos4 < 18) //limit to close the claw - measured fully-closed angle on this rebuild
     {
-      pos4 = 95;
+      pos4 = 18;
     }
   }
 }

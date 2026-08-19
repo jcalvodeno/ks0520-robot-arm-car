@@ -62,28 +62,37 @@ void setup(){
 void loop(){
   if(error!=0) return;  
    memory();  //call memory function
+   bool driving = false;  //track whether any direction button is currently held
    if(ps2x.Button(PSB_PAD_UP)) {         //will be TRUE as long as button is pressed
        Serial.print("Up held this hard: ");
        advance();
+       driving = true;
       }
       if(ps2x.Button(PSB_PAD_RIGHT)){
         Serial.print("Right held this hard: ");
         turnR();
+        driving = true;
       }
       if(ps2x.Button(PSB_PAD_LEFT)){
        Serial.print("LEFT held this hard: ");
         turnL();
+        driving = true;
       }
-      if(ps2x.Button(PSB_PAD_DOWN)){  
+      if(ps2x.Button(PSB_PAD_DOWN)){
        Serial.print("DOWN held this hard: ");
        back();
+       driving = true;
       }
       if(ps2x.Button(PSB_L2))
         {
           Serial.println("L2 pressed");
           stopp();
+          driving = true;
         }
-         
+      if(!driving){  //nothing held - stop, instead of coasting at the last commanded speed
+        stopp();
+      }
+
    down_ser();  //call function of servo on base 
    left_ser();  //call left servo function
    right_ser(); //call right servo function
@@ -94,7 +103,7 @@ void loop(){
 void down_ser(){  //servo on base
   if(ps2x.Analog (PSS_LX) < 50)  //put left joystick rightward
   {
-    pos1=pos1+2;
+    pos1=pos1+1;
     myservo1.write(pos1);  //limit the angle of left swinging
     delay(2); //delay time to control rotation speed of servo
     if(pos1>179)   //limit the angle of left swinging
@@ -104,7 +113,7 @@ void down_ser(){  //servo on base
   }
   if(ps2x.Analog (PSS_LX) > 200)  //put left joystick rightward
   {
-    pos1=pos1-2;
+    pos1=pos1-1;
     myservo1.write(pos1);  //arm swings to right
     delay(2); //delay time to control rotation speed of servo
     if(pos1<1)  //limit the angle of right swinging
@@ -117,17 +126,17 @@ void down_ser(){  //servo on base
 void left_ser(){  //left servo
   if(ps2x.Analog(PSS_LY)<50)  //put left joystick forward
   {
-    pos2=pos2+2;
+    pos2=pos2+1;
     myservo2.write(pos2);  //swing forward
     delay(2);
-    if(pos2>100)   //limit the angle of forward swinging
+    if(pos2>120)   //limit the angle of forward swinging - calibrated for this rebuild
     {
-      pos2=100;
+      pos2=120;
     }
   }
   if(ps2x.Analog(PSS_LY)>200)  //put left joystick backward
   {
-    pos2=pos2-2;
+    pos2=pos2-1;
     myservo2.write(pos2);  //swing back
     delay(2);
     if(pos2<1)  //limit the angle of back swinging
@@ -140,7 +149,7 @@ void left_ser(){  //left servo
 void right_ser(){ //right servo
   if(ps2x.Analog(PSS_RY)<50)  //put right joystick forward
   {
-    pos3=pos3+2;
+    pos3=pos3+1;
     myservo3.write(pos3);  //bigger arm swings forward
     delay(2);
     if(pos3>180)   //limit the angle of forward swinging
@@ -150,12 +159,12 @@ void right_ser(){ //right servo
   }
   if(ps2x.Analog(PSS_RY)>200)  //put right joystick backward
   {
-    pos3=pos3-2;
+    pos3=pos3-1;
     myservo3.write(pos3);  //bigger arm swings back
     delay(2);
-    if(pos3<80)  //limit the angle of back swinging
+    if(pos3<75)  //limit the angle of back swinging - calibrated for this rebuild
     {
-      pos3=80;
+      pos3=75;
     }
   }
 }
@@ -164,7 +173,7 @@ void zhuazi(){  //servo of claw
   if(ps2x.Analog(PSS_RX)>200) //put right joystick rightward
   {
       myservo4.write(pos4);  //servo 4 moves，claw gradually opens
-      pos4+=3;
+      pos4+=1;  //reduced from 3 for finer control, matches other joints' step size
       delay(1);
       if(pos4>180)  //limit angle
       {
@@ -174,11 +183,11 @@ void zhuazi(){  //servo of claw
   if(ps2x.Analog(PSS_RX)<50) ////put right joystick leftward
   {
       myservo4.write(pos4); //servo 4 executes pose, claw gradually closes
-      pos4-=3;
+      pos4-=1;  //reduced from 3 for finer control, matches other joints' step size
       delay(1);
-      if(pos4<95)  //limit the closed angle 
+      if(pos4<18)  //limit to close the claw - measured fully-closed angle on this rebuild
       {
-        pos4=95;
+        pos4=18;
       }
   }
 }
@@ -303,15 +312,15 @@ void advance() {   //go forward
 }
 void turnL() {  //turn left
   digitalWrite(AIN2, HIGH); //when AIN2 is high and AIN1 is low，motor MA turns anticlockwise
-  analogWrite(PWMA, 100); //rotation speed of motor MA is 100
+  analogWrite(PWMA, 60); //slowed from 100 - both wheels spin opposite directions here (pivot turn), which turns much sharper than the same speed feels driving straight
   digitalWrite(BIN2, HIGH); //When BIN2 is high and BIN1 is low, motor MB turns clockwise
-  analogWrite(PWMB, 100); //rotation speed of motor MB is 100
+  analogWrite(PWMB, 60);
 }
 void turnR() {  //turn right
   digitalWrite(AIN2, LOW); //when AIN2 is low and AIN1 is high，motor MA turns clockwise
-  analogWrite(PWMA, 100); //rotation speed of motor MA is 100
+  analogWrite(PWMA, 60); //slowed from 100 - see turnL()
   digitalWrite(BIN2, LOW); //When BIN2 is low and BIN1 is high, motor MB turns clockwise
-  analogWrite(PWMB, 100); //rotation speed of motor MB is 100
+  analogWrite(PWMB, 60);
 }
 void back() {   //go back
   digitalWrite(BIN2, LOW); //When BIN2 is low and BIN1 is high motor MB turns anticlockwise

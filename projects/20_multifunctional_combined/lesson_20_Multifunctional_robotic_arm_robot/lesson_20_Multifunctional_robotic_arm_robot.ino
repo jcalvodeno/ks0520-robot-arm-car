@@ -19,6 +19,7 @@ int error = 0;
 byte vibrate = 0;
 int pos1 = 90, pos2 = 100, pos3 = 80, pos4 = 90; // define angle variable of four servos and set initial value(posture angle value when setting up)
 char blue_val;
+char lastDriveSource = 0;  // 'B' = car currently driven by Bluetooth, 'P' = by PS2, 0 = stopped - so PS2's auto-stop-on-release doesn't cancel a Bluetooth-issued command
 int M1[20];          //define four arrays 
 int M2[20];          //respectively save the angle of four servos
 int M3[20];          //the array length is 20, can save 0~20 angle data
@@ -76,19 +77,22 @@ void setup() {
 }
 
 void loop() {
-  if (error != 0) return;
+  //NOTE: PS2 controller absence/failure (error != 0) must NOT block Bluetooth control below -
+  //only the PS2-specific block further down is gated on it. Previously this whole loop()
+  //returned immediately whenever no PS2 receiver was detected, silently disabling Bluetooth
+  //too even though it doesn't depend on PS2 at all.
   if (Serial.available() > 0) { //determine if Bluetooth receives signals
     blue_val = Serial.read();
     Serial.println(blue_val);
     switch (blue_val) {
-      case 'F': advance(); break; //receive‘F’ to go forward
-      case 'B': back();   break;  //receive‘B’ to go back
+      case 'F': advance(); lastDriveSource = 'B'; break; //receive‘F’ to go forward
+      case 'B': back();   lastDriveSource = 'B'; break;  //receive‘B’ to go back
 
-      case 'L': turnL();  break;  //receive‘L’ to turn left
+      case 'L': turnL();  lastDriveSource = 'B'; break;  //receive‘L’ to turn left
 
-      case 'R': turnR();  break;  //receive‘R’ to turn right
+      case 'R': turnR();  lastDriveSource = 'B'; break;  //receive‘R’ to turn right
 
-      case 'S': stopp();  break;  //receive‘S’ to stop
+      case 'S': stopp();  lastDriveSource = 0; break;  //receive‘S’ to stop
 
       case 'a': speeds_a(); break;  //receive‘a’, car speeds up
 
@@ -113,37 +117,70 @@ void loop() {
       
       case 'i': do_servo(); break;
       
-      case 'Y': avoid(); break; //receive‘Y’ to enable obstacle avoidance mode      
-      case 'U': follow(); break; //receive‘U’ to enable ultrasonic follow mode      
-      default: break;
+      case 'Y': avoid(); break; //receive‘Y’ to enable obstacle avoidance mode
+      case 'U': follow(); break; //receive‘U’ to enable ultrasonic follow mode
+      case 'H':  //"auto-carry" ON in the app - not documented by the vendor, best guess: return arm to home/neutral pose
+        pos1 = 90; pos2 = 100; pos3 = 80; pos4 = 90;
+        myservo3.write(pos3);  //same order/values as setup()'s startup pose
+        delay(500);
+        myservo2.write(pos2);
+        delay(500);
+        myservo1.write(pos1);
+        delay(500);
+        myservo4.write(pos4);
+        break;
+      default:
+        Serial.print("Unhandled byte: '");
+        Serial.print(blue_val);
+        Serial.print("' (");
+        Serial.print((int)blue_val);
+        Serial.println(")");
+        break;
     }
   }
-  if (ps2x.Button(PSB_PAD_UP)) {        //will be TRUE as long as button is pressed
-    Serial.print("Up held this hard: ");
-    advance();
+  if (error == 0) {  //PS2 controller detected at boot - only then poll/act on it
+    bool driving = false;  //track whether any direction button is currently held
+    if (ps2x.Button(PSB_PAD_UP)) {        //will be TRUE as long as button is pressed
+      Serial.print("Up held this hard: ");
+      advance();
+      driving = true;
+      lastDriveSource = 'P';
+    }
+    if (ps2x.Button(PSB_PAD_RIGHT)) {
+      Serial.print("Right held this hard: ");
+      turnR();
+      driving = true;
+      lastDriveSource = 'P';
+    }
+    if (ps2x.Button(PSB_PAD_LEFT)) {
+      Serial.print("LEFT held this hard: ");
+      turnL();
+      driving = true;
+      lastDriveSource = 'P';
+    }
+    if (ps2x.Button(PSB_PAD_DOWN)) {
+      Serial.print("DOWN held this hard: ");
+      back();
+      driving = true;
+      lastDriveSource = 'P';
+    }
+    if (ps2x.Button(PSB_L2))
+    {
+      Serial.println("L2 pressed");
+      stopp();
+      driving = true;
+      lastDriveSource = 0;
+    }
+    if (!driving && lastDriveSource == 'P') {  //only auto-stop if PS2 itself was the one driving - don't cancel a Bluetooth command just because no PS2 button is held
+      stopp();
+      lastDriveSource = 0;
+    }
+    memory();  //call the memory function
+    down_ser();  //call the servo on base function
+    left_ser();  //call the left servo function
+    right_ser(); // call the right servo function
+    zhuazi();  //call claw function
   }
-  if (ps2x.Button(PSB_PAD_RIGHT)) {
-    Serial.print("Right held this hard: ");
-    turnR();
-  }
-  if (ps2x.Button(PSB_PAD_LEFT)) {
-    Serial.print("LEFT held this hard: ");
-    turnL();
-  }
-  if (ps2x.Button(PSB_PAD_DOWN)) {
-    Serial.print("DOWN held this hard: ");
-    back();
-  }
-  if (ps2x.Button(PSB_L2))
-  {
-    Serial.println("L2 pressed");
-    stopp();
-  }
-  memory();  //call the memory function 
-  down_ser();  //call the servo on base function
-  left_ser();  //call the left servo function
-  right_ser(); // call the right servo function
-  zhuazi();  //call claw function
   delay(10);
 }
 
@@ -207,8 +244,8 @@ void ZB() { //claw closes
     pos4 -= 2;
     myservo4.write(pos4);
     delay(8);
-    if (pos4 <= 95) {
-      pos4 = 95;
+    if (pos4 <= 18) {  //calibrated floor - measured fully-closed angle on this rebuild
+      pos4 = 18;
     }
     blue_val = Serial.read();
     if (blue_val == 's')ZB_flag = 0;
@@ -235,8 +272,8 @@ void LF() { //smaller arm lifts up
     pos2 += 1;
     myservo2.write(pos2);
     delay(8);
-    if (pos2 >= 100) {
-      pos2 = 100;
+    if (pos2 >= 120) {  //calibrated ceiling for this rebuild
+      pos2 = 120;
     }
     blue_val = Serial.read();
     if (blue_val == 's')LF_flag = 0;
@@ -275,8 +312,8 @@ void RB() { // bigger arm swings back
     pos3 -= 1;
     myservo3.write(pos3);
     delay(8);
-    if (pos3 <= 80) {
-      pos3 = 80;
+    if (pos3 <= 75) {  //calibrated floor for this rebuild
+      pos3 = 75;
     }
     blue_val = Serial.read();
     if (blue_val == 's')RB_flag = 0;
@@ -434,7 +471,7 @@ void follow() {   //ultrasonic follow
 void down_ser() { //servo on base
   if (ps2x.Analog (PSS_LX) < 50) //move the left joystick to left
   {
-    pos1 = pos1 + 2;
+    pos1 = pos1 + 1;
     myservo1.write(pos1);  //arm swings to left
     delay(2); //delay time to control rotation speed of servo
     if (pos1 > 179) //limit the angle of left swinging
@@ -444,7 +481,7 @@ void down_ser() { //servo on base
   }
   if (ps2x.Analog (PSS_LX) > 200) //move the left joystick to right
   {
-    pos1 = pos1 - 2;
+    pos1 = pos1 - 1;
     myservo1.write(pos1);  //arm swings to right
     delay(2); //delay time to control rotation speed of servo
     if (pos1 < 1) //limit the angle of right swinging
@@ -456,17 +493,17 @@ void down_ser() { //servo on base
 void left_ser() { //left servo
   if (ps2x.Analog(PSS_LY) < 50) //move the left joystick forward
   {
-    pos2 = pos2 + 2;
+    pos2 = pos2 + 1;
     myservo2.write(pos2);  //arm swings forward
     delay(2);
-    if (pos2 > 100) //limit the angle of forward swinging
+    if (pos2 > 120) //limit the angle of forward swinging - calibrated for this rebuild
     {
-      pos2 = 100;
+      pos2 = 120;
     }
   }
   if (ps2x.Analog(PSS_LY) > 200) //move the left joystick backward
   {
-    pos2 = pos2 - 2;
+    pos2 = pos2 - 1;
     myservo2.write(pos2);  //arm swings back
     delay(2);
     if (pos2 < 0) //limit the angle of back swinging
@@ -480,7 +517,7 @@ void left_ser() { //left servo
 void right_ser() { //right servo
   if (ps2x.Analog(PSS_RY) < 50) //move the right joystick forward
   {
-    pos3 = pos3 + 2;
+    pos3 = pos3 + 1;
     myservo3.write(pos3);  //bigger arm swings forward
     delay(2);
     if (pos3 > 180) //limit the angle of forward swinging
@@ -490,12 +527,12 @@ void right_ser() { //right servo
   }
   if (ps2x.Analog(PSS_RY) > 200)//move the right joystick backward
   {
-    pos3 = pos3 - 2;
+    pos3 = pos3 - 1;
     myservo3.write(pos3);  //arm swings back
     delay(2);
-    if (pos3 < 80)  //limit the angle of back swinging
+    if (pos3 < 75)  //limit the angle of back swinging - calibrated for this rebuild
     {
-      pos3 = 80;
+      pos3 = 75;
     }
   }
 }
@@ -504,7 +541,7 @@ void zhuazi() { //servo of claw
   if (ps2x.Analog(PSS_RX) > 200) //move the right joystick to right
   {
     myservo4.write(pos4);  //servo 4 moves，claw gradually opens
-    pos4 += 3;
+    pos4 += 1;  //reduced from 3 for finer control, matches other joints' step size
     delay(1);
     if (pos4 > 180) //limit angle
     {
@@ -514,11 +551,11 @@ void zhuazi() { //servo of claw
   if (ps2x.Analog(PSS_RX) < 50) ////move the right joystick to left
   {
     myservo4.write(pos4); //servo 4 executes pose, claw gradually closes
-    pos4 -= 3;
+    pos4 -= 1;  //reduced from 3 for finer control, matches other joints' step size
     delay(1);
-    if (pos4 < 95) //limit to open the maximum angle
+    if (pos4 < 18) //limit to close the claw - measured fully-closed angle on this rebuild
     {
-      pos4 = 95;
+      pos4 = 18;
     }
   }
 }
